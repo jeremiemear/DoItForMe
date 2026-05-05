@@ -2,6 +2,9 @@
   "name": "doitforme",
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": "18.x"
+  },
   "dependencies": {
     "cheerio": "^1.0.0-rc.12"
   }

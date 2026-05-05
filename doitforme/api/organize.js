@@ -1,89 +1,98 @@
 import { getGenresFromEveryNoise } from "./everynoise.js";
 
-export default async function handler(req,res){
+export default async function handler(req, res) {
+  try {
 
-const token = req.query.token;
+    const token = req.query.token;
 
-async function spotifyFetch(url, options={}){
-return fetch(url,{
-...options,
-headers:{
-Authorization:`Bearer ${token}`,
-"Content-Type":"application/json"
-}
-}).then(r=>r.json());
-}
+    if (!token) {
+      return res.status(400).json({ error: "Missing token" });
+    }
 
-// 1️⃣ Récupérer utilisateur
-const me = await spotifyFetch("https://api.spotify.com/v1/me");
+    async function spotifyFetch(url, options = {}) {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      });
 
-// 2️⃣ Récupérer tous les morceaux
-let tracks = [];
-let next = "https://api.spotify.com/v1/me/tracks?limit=50";
+      return await response.json();
+    }
 
-while(next){
-const data = await spotifyFetch(next);
-tracks.push(...data.items);
-next = data.next;
-}
+    const me = await spotifyFetch("https://api.spotify.com/v1/me");
 
-// 3️⃣ Grouper par genre
-let genreMap = {};
+    if (!me.id) {
+      return res.status(400).json({ error: "Spotify auth failed" });
+    }
 
-for(const item of tracks){
+    let tracks = [];
+    let next = "https://api.spotify.com/v1/me/tracks?limit=50";
 
-const track = item.track;
-const artist = track.artists[0];
+    while (next) {
+      const data = await spotifyFetch(next);
+      tracks.push(...data.items);
+      next = data.next;
+    }
 
-let artistData = await spotifyFetch(
-`https://api.spotify.com/v1/artists/${artist.id}`
-);
+    let genreMap = {};
 
-let genres = artistData.genres;
+    for (const item of tracks) {
+      const track = item.track;
+      const artist = track.artists[0];
 
-if(!genres || genres.length===0){
-genres = await getGenresFromEveryNoise(artist.name);
-}
+      let artistData = await spotifyFetch(
+        `https://api.spotify.com/v1/artists/${artist.id}`
+      );
 
-if(genres.length===0) continue;
+      let genres = artistData.genres;
 
-const mainGenre = genres[0];
+      if (!genres || genres.length === 0) {
+        genres = await getGenresFromEveryNoise(artist.name);
+      }
 
-if(!genreMap[mainGenre])
-genreMap[mainGenre]=[];
+      if (!genres || genres.length === 0) continue;
 
-genreMap[mainGenre].push(track.uri);
-}
+      const mainGenre = genres[0];
 
-// 4️⃣ Création playlists
-for(const genre in genreMap){
+      if (!genreMap[mainGenre]) genreMap[mainGenre] = [];
 
-const playlist = await spotifyFetch(
-`https://api.spotify.com/v1/users/${me.id}/playlists`,
-{
-method:"POST",
-body:JSON.stringify({
-name:`DIFM - ${genre}`,
-public:false
-})
-}
-);
+      genreMap[mainGenre].push(track.uri);
+    }
 
-// 5️⃣ Ajout morceaux batch 50
-const uris = genreMap[genre];
-for(let i=0;i<uris.length;i+=50){
+    for (const genre in genreMap) {
 
-await spotifyFetch(
-`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`,
-{
-method:"POST",
-body:JSON.stringify({
-uris: uris.slice(i,i+50)
-})
-}
-);
-}
-}
+      const playlist = await spotifyFetch(
+        `https://api.spotify.com/v1/users/${me.id}/playlists`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: `DIFM - ${genre}`,
+            public: false
+          })
+        }
+      );
 
-res.send("✅ Organisation terminée. Vérifie ton Spotify.");
+      const uris = genreMap[genre];
+
+      for (let i = 0; i < uris.length; i += 50) {
+        await spotifyFetch(
+          `https://api.spotify.com/v1/playlists/${playlist.id}/tracks`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              uris: uris.slice(i, i + 50)
+            })
+          }
+        );
+      }
+    }
+
+    return res.status(200).json({ success: true });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Internal Server Error", details: error.message });
+  }
 }

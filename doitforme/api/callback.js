@@ -1,23 +1,26 @@
-export default async function handler(req, res) {
+export async function GET(request) {
 
-const code = req.query.code;
+  const { searchParams } = new URL(request.url);
+  const code = searchParams.get("code");
 
-const response = await fetch("https://accounts.spotify.com/api/token", {
-method: "POST",
-headers: {
-"Content-Type": "application/x-www-form-urlencoded",
-"Authorization": "Basic " + Buffer.from(
-process.env.SPOTIFY_CLIENT_ID + ":" + process.env.SPOTIFY_CLIENT_SECRET
-).toString("base64")
-},
-body: new URLSearchParams({
-grant_type: "authorization_code",
-code: code,
-redirect_uri: process.env.REDIRECT_URI
-})
-});
+  const response = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Authorization": "Basic " + Buffer.from(
+        process.env.SPOTIFY_CLIENT_ID + ":" + process.env.SPOTIFY_CLIENT_SECRET
+      ).toString("base64")
+    },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code: code,
+      redirect_uri: process.env.REDIRECT_URI
+    })
+  });
 
-const data = await response.json();
+  const data = await response.json();
 
-res.redirect(`/api/organize?token=${data.access_token}`);
+  return Response.redirect(
+    `${process.env.VERCEL_URL ? "https://" + process.env.VERCEL_URL : ""}/api/organize?token=${data.access_token}`
+  );
 }
